@@ -1,0 +1,305 @@
+#!/usr/bin/python
+from IDPbuilder_data import samples  # load a database of internal coordinates
+import sys
+import math
+import sys
+import random
+from copy import deepcopy
+
+NITER=2
+
+RESNAMES = {'A': 'ALA', 'C': 'CYS', 'D': 'ASP', 'E': 'GLU', 'F': 'PHE',
+            'G': 'GLY', 'H': 'HIS', 'I': 'ILE', 'K': 'LYS', 'L': 'LEU',
+            'M': 'MET', 'N': 'ASN', 'P': 'PRO', 'R': 'ARG', 'Q': 'GLN',
+            'S': 'SER', 'T': 'THR', 'V': 'VAL', 'Y': 'TYR', 'W': 'TRP', }
+
+AAs = [RESNAMES[k] for k in RESNAMES]
+
+# building pseudocode of 20 standard amino acid
+DB = {'PRO': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD'), ('g', '-3'), ('a', 'O')],
+      'TYR': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD1'), ('a', 'CE1'), ('a', 'CZ'), ('a', 'OH'), ('a', 'CE2'), ('a', 'CD2'), ('g', '-8'), ('a', 'O')],
+      'ALA': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('g', '-1'), ('a', 'O')],
+      'CYS': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'SG'), ('g', '-2'), ('a', 'O')],
+      'VAL': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG1'), ('a', 'CG2'), ('g', '-3'), ('a', 'O')],
+      'GLU': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD'), ('a', 'OE1'), ('a', 'OE2'), ('g', '-5'), ('a', 'O')],
+      'SER': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'OG'), ('g', '-2'), ('a', 'O')],
+      'ASP': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'OD1'), ('a', 'OD2'), ('g', '-4'), ('a', 'O')],
+      'ARG': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD'), ('a', 'NE'), ('a', 'CZ'), ('a', 'NH1'), ('a', 'NH2'), ('g', '-7'), ('a', 'O')],
+      'PHE': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD1'), ('a', 'CE1'), ('a', 'CZ'), ('a', 'CE2'), ('a', 'CD2'), ('g', '-7'), ('a', 'O')],
+      'LEU': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD1'), ('a', 'CD2'), ('g', '-4'), ('a', 'O')],
+      'THR': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG2'), ('a', 'OG1'), ('g', '-3'), ('a', 'O')],
+      'HIS': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'ND1'), ('a', 'CE1'), ('a', 'NE2'), ('a', 'CD2'), ('g', '-6'), ('a', 'O')],
+      'ILE': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG2'), ('a', 'CG1'), ('a', 'CD1'), ('g', '-4'), ('a', 'O')],
+      'GLY': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'O')],
+      'GLN': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD'), ('a', 'OE1'), ('a', 'NE2'), ('g', '-5'), ('a', 'O')],
+      'LYS': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD'), ('a', 'CE'), ('a', 'NZ'), ('g', '-5'), ('a', 'O')],
+      'MET': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'SD'), ('a', 'CE'), ('g', '-4'), ('a', 'O')],
+      'ASN': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'OD1'), ('a', 'ND2'), ('g', '-4'), ('a', 'O')],
+      'TRP': [('a', 'N'), ('a', 'CA'), ('a', 'C'), ('a', 'CB'), ('a', 'CG'), ('a', 'CD1'), ('a', 'NE1'), ('a', 'CE2'), ('a', 'CZ2'), ('a', 'CH2'), ('a', 'CZ3'), ('a', 'CE3'), ('a', 'CD2'), ('g', '-10'), ('a', 'O')]}
+
+excl = [('N', 'C'), ('N', 'O'), ('N', 'CA'), ('N', 'CB'), ('N', 'N'),
+        ('CA', 'CA'), ('CA', 'C'), ('CA', 'O'),
+        ('C', 'C'), ('CB', 'C')]
+exclPRO = excl[:]
+exclPRO.extend([('CD', 'CA'), ('CD', 'C'), ('CD', 'O'), ('CG', 'C')])
+
+
+def radius(nm):  # radius of atoms according to their names
+    if nm[0] == 'C':
+        if nm == 'C':
+            return 1.3
+        else:
+            return 1.5
+    if nm[0] == 'O':
+        return 1.4
+    if nm[0] == 'N':
+        return 1.3
+    if nm[0] == 'S':
+        return 1.75
+
+
+def rot_matrix(axis, angle):
+    """
+    Returns a rotation matrix determined by a rotation vector and a an angle of a revolution.
+    Axis must be a normalized vecor and the angle in radian.
+    """
+    c = math.cos(angle)
+    s = math.sin(angle)
+    v = 1-c
+    kx = axis[0]
+    ky = axis[1]
+    kz = axis[2]
+    mat = ((kx*kx*v+c,     kx*ky*v-kz*s,    kx*kz*v+ky*s),
+           (kx*ky*v+kz*s,  ky*ky*v+c,       ky*kz*v-kx*s),
+           (kx*kz*v-ky*s,  kz*ky*v+kx*s,    kz*kz*v+c))
+    return mat
+
+
+def v3_normalize(a):
+    """Normalizes a vector"""
+    imag = 1.0/math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2])
+    return (a[0]*imag, a[1]*imag, a[2]*imag)
+
+
+def v3_sub(a, b):
+    """Substracts two vectors"""
+    return (a[0]-b[0], a[1]-b[1], a[2]-b[2])
+
+
+def v3_add(a, b):
+    """Addition of two vectors"""
+    return (a[0]+b[0], a[1]+b[1], a[2]+b[2])
+
+
+def v3_dot(a, b):
+    """Dot product of two vectors"""
+    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]
+
+
+def v3_cross(a, b):
+    """Cross product of two vectors"""
+    return (a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0])
+
+
+def v3_smul(a, b):
+    """Scales a vector by a scalar"""
+    return (a[0]*b, a[1]*b, a[2]*b)
+
+
+def mv3_mul(m, a):
+    """Multiplies a matrix by a vector ( m . a )"""
+    return (m[0][0]*a[0] + m[0][1]*a[1] + m[0][2]*a[2],
+            m[1][0]*a[0] + m[1][1]*a[1] + m[1][2]*a[2],
+            m[2][0]*a[0] + m[2][1]*a[1] + m[2][2]*a[2])
+
+
+def dist(a, b):
+    """Returns euclidian distance"""
+    return math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2)
+
+
+def build_origin(r1, r2, a):
+    """Initializes the structure starting in the origin of the coordinate system"""
+    X = [(0.0, 0.0, 0.0),
+         (0.0, 0.0, r1),
+         (0.0, r2*math.sin(math.pi-a), r1+r2*math.cos(math.pi-a))]
+    return X
+
+
+def add_atom(prev, r, a, d):
+    """
+    Calculates the position of the atom as defined by its internal coordinates:
+    r: distance from the previous atom
+    a: angle formed with two previous atoms (in radians)
+    d: dihedral defined with previous three atoms (in radians)
+    prev must contain at least three coordinates
+    """
+    v01 = v3_sub(prev[-3], prev[-2])
+    v12 = v3_sub(prev[-2], prev[-1])
+    nv = v3_cross(v01, v12)
+    v01 = v3_normalize(v01)
+    v12 = v3_normalize(v12)
+    nv = v3_normalize(nv)
+    pa = math.acos(v3_dot(v01, v12))
+    rm1 = rot_matrix(nv, pa-a)
+    v32_t = mv3_mul(rm1, v01)
+    rm2 = rot_matrix(v12, -d)
+    v32 = mv3_mul(rm2, v32_t)
+    v32 = v3_smul(v32, r)
+    x = v3_add(prev[-1], v32)
+    return x
+
+
+def add_res(xyz, prev, resnums, resnames, names, rads, aa):
+    """
+    Adds a whole residue in place. If a collision is detected, the building is stopped and the function returns False
+    """
+    code = DB[aa]  # code for building of the residue
+    di = 0
+    while True:
+        params = random.choice(samples[aa])
+        if random.uniform(0, 1) < params[-4]:
+            break  # weighting
+    pi = 0
+    if len(xyz) < 3:
+        r1 = params[3*1+0]
+        r2 = params[3*2+0]
+        a2 = params[3*2+1]
+        ori = build_origin(r1, r2, a2)
+        xyz.extend(ori)
+        prev.extend(ori)
+        for k in range(3):
+            resnums.append(1)
+        for k in range(3):
+            resnames.append(aa)
+        names.append(code[0][1])
+        names.append(code[1][1])
+        names.append(code[2][1])
+        rads.append(radius(names[-3]))
+        rads.append(radius(names[-2]))
+        rads.append(radius(names[-1]))
+        di = 3
+        rnum = 1
+        pi = 3*3
+    else:
+        rnum = resnums[-1]+1
+    ok = True
+    for i in code[di:]:
+        if i[0] == 'a':
+            resnums.append(rnum)
+            resnames.append(aa)
+            names.append(i[1])
+            r = float(params[pi+0])
+            a = float(params[pi+1])
+            d = float(params[pi+2])
+            pi += 3
+            nx = add_atom(prev, r, a, d)
+            xyz.append(nx)
+            prev.append(nx)
+
+            #check clashes#
+            myrad = radius(i[1])
+            rads.append(myrad)
+            for ii in reversed(range(len(xyz))):
+                rn = resnums[ii]
+                if rn < rnum:
+                    if rn == rnum-1:
+                        if aa == 'PRO':  #proline is special
+                            if (i[1], names[ii]) in exclPRO:
+                                continue
+                        else:  # other amino acids
+                            if (i[1], names[ii]) in excl:
+                                continue
+                    dd = dist(xyz[ii], nx)
+                    if dd < myrad+rads[ii]:
+                        ok = False
+                        break
+        if not ok:
+            break
+        if i[0] == 'g':
+            n = int(i[1])
+            for ii in range(abs(n)):
+                prev.pop()
+    return ok
+
+
+def build(xyz, prev, resnums, resnames, names, rads, seq, seqind):
+    if seqind >= len(seq):
+        return True, xyz, prev, resnums, resnames, names, rads  # we are done
+    oxyz = deepcopy(xyz)
+    oprev = deepcopy(prev)
+    oresnums = deepcopy(resnums)
+    oresnames = deepcopy(resnames)
+    onames = deepcopy(names)
+    orads = deepcopy(rads)
+    done = False
+    for cyc in range(NITER):
+        ok = add_res(xyz, prev, resnums, resnames,
+                     names, rads, RESNAMES[seq[seqind]])
+        if ok:
+            ok2, xyz, prev, resnums, resnames, names, rads = build(
+                xyz, prev, resnums, resnames, names, rads, seq, seqind+1)
+            if ok2:
+                return True, xyz, prev, resnums, resnames, names, rads
+        xyz = deepcopy(oxyz)
+        prev = deepcopy(oprev)
+        resnums = deepcopy(oresnums)
+        resnames = deepcopy(oresnames)
+        names = deepcopy(onames)
+        rads = deepcopy(orads)
+    return False, xyz, prev, resnums, resnames, names, rads,
+
+
+def build_seq(seq,serial):
+    ok = False
+    while not ok:
+        xyz, prev, resnums, resnames, names, rads = [], [], [], [], [], []
+        ok, xyz, prev, resnums, resnames, names, rads = build(
+            xyz, prev, resnums, resnames, names, rads, seq, 0)
+        if ok:
+            print("MODEL     %i"%serial)
+            for ii in range(len(xyz)):
+                print("%-6s%5u  %-4.4s%3.3s %c%4d%c   %8.3f%8.3f%8.3f%6.2f%6.2f          %2s" % ("ATOM", ii+1,
+                                                                                                 names[ii], resnames[ii], ' ', resnums[ii], ' ', xyz[ii][0], xyz[ii][1], xyz[ii][2], 1.0, 0.0, ""))
+            print("TER           ")
+            print("ENDMDL        ")
+
+
+
+if __name__ == "__main__":
+    nstruc=100
+    seq=""
+    for arg in sys.argv[1:]:
+       if arg.find('N=')==0: 
+            arg=arg.replace('N=',"")
+            try:
+                nstruc=int(arg)
+            except:
+                sys.stderr.write('Number expected!\n')
+                exit() 
+       elif arg.find('seed=')==0:
+            arg=arg.replace('seed=',"")
+            try:
+                rseed=int(arg)
+            except:
+                sys.stderr.write('Number expected!\n')
+                exit()
+            random.seed(rseed)    
+       else:  seq=arg
+
+    if not seq:
+        sys.stderr.write('Sequence not provided!\n')
+        exit()
+    
+    seq=seq.replace(" ","")     #get rid of spaces and tabs
+    seq=seq.replace("\t","")
+    
+
+    for a in seq:      #check sequence
+        if a not in RESNAMES:
+            sys.stderr.write('Unknown residue (%s)!\n'%a)
+            exit()
+
+    for i in range(nstruc):  #generate structures
+              build_seq(seq,i+1)
+
